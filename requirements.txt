@@ -6,3 +6,4 @@ python-jose[cryptography]==3.3.0
 python_multipart==0.0.20
 slowapi==0.1.9
 bcrypt<4.0
+httpx>=0.27
