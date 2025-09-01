@@ -1,0 +1,47 @@
+@base = http://localhost:8000
+
+### Health
+GET {{base}}/health
+
+### Login as admin
+# @name login_admin
+POST {{base}}/auth/token
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "password"
+}
+
+### Create a book (admin-only)
+POST {{base}}/books
+Authorization: Bearer {{login_admin.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "title": "Dune",
+  "author": "Frank Herbert",
+  "genre": "Sci-Fi",
+  "price": 9.99,
+  "popularity": 100
+}
+
+### List books
+GET {{base}}/books?limit=20
+
+### Get book by ID
+GET {{base}}/books/1
+
+### Update a book (admin-only)
+PATCH {{base}}/books/1
+Authorization: Bearer {{login_admin.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "price": 12.99,
+  "popularity": 110
+}
+
+### Delete a book (admin-only)
+DELETE {{base}}/books/1
+Authorization: Bearer {{login_admin.response.body.access_token}}
