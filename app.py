@@ -15,8 +15,12 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # --- Settings ---
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-secrets")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if len(JWT_SECRET) < 32:
+    raise RuntimeError("JWT_SECRET must be set to a random value of at least 32 characters")
 JWT_ALG = "HS256"
+JWT_ISSUER = "bookstore-api"
+JWT_AUDIENCE = "bookstore-clients"
 ACCESS_TOKEN_MINUTES = 60
 MAX_BODY = 1 * 1024 * 1024
 
@@ -49,10 +53,11 @@ DEMO_USERS = {
 }
 
 
-def create_access_token(sub: str, role: str) -> str:
+def create_access_token(sub: str) -> str:
     payload = {
         "sub": sub,
-        "role": role,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
         "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
@@ -85,10 +90,21 @@ def get_current_user(authorization: str = Header(...)) -> AuthUser:
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid authorization header")
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return AuthUser(username=payload["sub"], role=payload["role"])
+        payload = jwt.decode(
+            token,
+            JWT_SECRET,
+            algorithms=[JWT_ALG],
+            issuer=JWT_ISSUER,
+            audience=JWT_AUDIENCE,
+            options={"require_exp": True, "require_sub": True},
+        )
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # The token proves who the caller is; the server decides what they may do.
+    rec = DEMO_USERS.get(payload["sub"])
+    if not rec:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return AuthUser(username=payload["sub"], role=rec[1])
 
 
 def require_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
@@ -155,7 +171,7 @@ def login_json(creds: LoginIn, request: Request):
     rec = DEMO_USERS.get(creds.username)
     if not rec or not pwd_context.verify(creds.password, rec[0]):
         raise HTTPException(status_code=401, detail="Bad credentials")
-    token = create_access_token(creds.username, rec[1])
+    token = create_access_token(creds.username)
     return {"access_token": token}
 
 

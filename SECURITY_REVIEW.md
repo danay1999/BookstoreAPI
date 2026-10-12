@@ -36,6 +36,17 @@ The API surface is small:
 - CI runs pytest, Bandit, and Semgrep.
 - Dependencies are pinned for core runtime packages.
 
+### Remediation Status
+
+| Finding | Status |
+| --- | --- |
+| 1. Default JWT secret allows token forgery | Fixed: startup fails unless `JWT_SECRET` is at least 32 characters; there is no default. |
+| 2. Hardcoded, weak demo credentials | Open |
+| 3. JWT validation trusts role claims | Fixed: tokens carry and require `iss`, `aud`, `exp`, and `sub`; the role comes from server-side user data, never the token. `iat` and `jti` are not added yet. |
+| 4. Non-blocking CI security gates | Open |
+
+Regression tests in `tests/test_security_auth.py` cover the old default secret, a forged role claim, an unknown user, a wrong issuer, a wrong audience, and an expired token.
+
 ### High-Priority Findings
 
 1. Default JWT secret allows token forgery.

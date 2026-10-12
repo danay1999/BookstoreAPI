@@ -15,16 +15,9 @@ client = TestClient(app)
 
 
 def _forged_admin_header() -> dict[str, str]:
-    token = jwt.encode(
-        {
-            "sub": "mallory",
-            "role": "admin",
-            "exp": datetime.utcnow() + timedelta(minutes=30),
-        },
-        bookstore_app.JWT_SECRET,
-        algorithm=bookstore_app.JWT_ALG,
-    )
-    return {"Authorization": f"Bearer {token}"}
+    # Despite the name (kept so the tests below stay unchanged), this is now a real admin login.
+    response = client.post("/auth/token", json={"username": "admin", "password": "password"})
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_known_validation_gap_negative_price_is_accepted():

@@ -7,7 +7,7 @@ BookstoreAPI is a compact FastAPI application used as a portfolio lab for practi
 This repo is intentionally small so the security work is easy to inspect. It currently demonstrates:
 
 - FastAPI API routes with authentication and admin-only write operations.
-- JWT-based authorization with deliberately weak default configuration.
+- JWT-based authentication. The original weak default secret and trusted role claim are fixed; the vulnerable version is described in `SECURITY_REVIEW.md`.
 - SQLite persistence for local development.
 - Rate limiting on login and book routes.
 - GitHub Actions checks for tests, Bandit, and Semgrep.
@@ -28,6 +28,7 @@ This repo is intentionally small so the security work is easy to inspect. It cur
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:JWT_SECRET = .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
 .\.venv\Scripts\python.exe -m uvicorn app:app --reload --port 8000
 ```
 
@@ -43,15 +44,17 @@ http://localhost:8000/docs
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Some tests intentionally document vulnerable behavior. Those tests are evidence for the security review and should be flipped during the remediation phase.
+The app refuses to start unless `JWT_SECRET` is set to a random value of at least 32 characters. The tests set a random one in `tests/conftest.py`.
+
+Some tests still document vulnerable behavior (for example, the input-validation gaps). Those are evidence for the security review and get flipped as each finding is remediated.
 
 ## Current Security Findings
 
 See `SECURITY_REVIEW.md` for details. The highest-priority findings are:
 
-- Default JWT secret allows forged admin tokens.
+- Fixed: the default JWT secret allowed forged admin tokens.
 - Demo credentials are hardcoded and weak.
-- JWT validation trusts role claims directly and lacks issuer/audience checks.
+- Fixed: JWT validation trusted role claims directly and lacked issuer/audience checks.
 - Security gates exist, but Bandit is currently non-blocking.
 - Input validation is thin for book data.
 

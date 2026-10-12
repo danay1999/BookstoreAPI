@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -48,26 +48,94 @@ def test_user_role_cannot_create_books():
     assert response.status_code == 403
 
 
-def test_known_vulnerability_default_secret_allows_forged_admin_token():
-    forged_token = jwt.encode(
+def _forge(claims: dict, secret: str) -> str:
+    claims = {"exp": datetime.now(timezone.utc) + timedelta(minutes=30), **claims}
+    return jwt.encode(claims, secret, algorithm=bookstore_app.JWT_ALG)
+
+
+NEW_BOOK = {"title": "Forged Admin Token", "author": "Mallory", "price": 0.01}
+
+
+def test_token_signed_with_old_default_secret_is_rejected():
+    token = _forge(
+        {"sub": "admin", "iss": bookstore_app.JWT_ISSUER, "aud": bookstore_app.JWT_AUDIENCE},
+        "change-me-in-secrets",
+    )
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 401
+
+
+def test_role_claim_in_token_is_ignored():
+    # Even with the real secret, a regular user cannot promote themselves.
+    token = _forge(
         {
-            "sub": "mallory",
+            "sub": "user",
             "role": "admin",
-            "exp": datetime.utcnow() + timedelta(minutes=30),
+            "iss": bookstore_app.JWT_ISSUER,
+            "aud": bookstore_app.JWT_AUDIENCE,
         },
         bookstore_app.JWT_SECRET,
-        algorithm=bookstore_app.JWT_ALG,
     )
 
-    response = client.post(
-        "/books",
-        headers=_auth_header(forged_token),
-        json={
-            "title": "Forged Admin Token",
-            "author": "Mallory",
-            "price": 0.01,
-        },
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 403
+
+
+def test_token_for_unknown_user_is_rejected():
+    token = _forge(
+        {"sub": "mallory", "iss": bookstore_app.JWT_ISSUER, "aud": bookstore_app.JWT_AUDIENCE},
+        bookstore_app.JWT_SECRET,
     )
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 401
+
+
+def test_token_for_another_audience_is_rejected():
+    token = _forge(
+        {"sub": "admin", "iss": bookstore_app.JWT_ISSUER, "aud": "some-other-service"},
+        bookstore_app.JWT_SECRET,
+    )
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 401
+
+
+def test_token_from_another_issuer_is_rejected():
+    token = _forge(
+        {"sub": "admin", "iss": "some-other-issuer", "aud": bookstore_app.JWT_AUDIENCE},
+        bookstore_app.JWT_SECRET,
+    )
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 401
+
+
+def test_expired_token_is_rejected():
+    token = _forge(
+        {
+            "sub": "admin",
+            "iss": bookstore_app.JWT_ISSUER,
+            "aud": bookstore_app.JWT_AUDIENCE,
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+        },
+        bookstore_app.JWT_SECRET,
+    )
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
+
+    assert response.status_code == 401
+
+
+def test_real_admin_login_can_still_create_books():
+    token = _login("admin", "password")
+
+    response = client.post("/books", headers=_auth_header(token), json=NEW_BOOK)
 
     assert response.status_code == 200
-    assert response.json()["title"] == "Forged Admin Token"
